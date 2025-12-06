@@ -40,6 +40,14 @@ export type BackgroundLayer = {
   type: 'image' | 'video';
 };
 
+export interface Hotspot {
+  id: string;
+  label: string;
+  x: number; // Percentage 0-100
+  y: number; // Percentage 0-100
+  action: string;
+}
+
 export interface GameSettings {
   godMode: boolean;        // Max stats, force success
   maxCompliance: boolean;  // NPCs obey everything

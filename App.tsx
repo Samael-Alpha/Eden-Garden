@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Image as ImageIcon, Sparkles, Trash2, Zap, MonitorPlay, Volume2, VolumeX, Clapperboard, Film, Save, FolderOpen, Wand2, History, MessageSquare } from 'lucide-react';
+import { Send, Image as ImageIcon, Sparkles, Trash2, Zap, MonitorPlay, Volume2, VolumeX, Clapperboard, Film, Save, FolderOpen, Wand2, History, MessageSquare, MousePointerClick } from 'lucide-react';
 import { ChatMessage } from './components/ChatMessage';
 import { CharacterCreator } from './components/CharacterCreator';
 import { SpriteDisplay } from './components/SpriteDisplay';
@@ -8,7 +8,7 @@ import { ParticleBackground } from './components/ParticleBackground';
 import { CheatMenu } from './components/CheatMenu';
 import { VisualNovelUI } from './components/VisualNovelUI';
 import { initializeChat, sendMessageToGemini, generateImageWithGemini, generateSpeech, generateSceneVideo } from './services/geminiService';
-import { Message, CharacterProfile, BackgroundLayer, CharacterStats, GameSettings } from './types';
+import { Message, CharacterProfile, BackgroundLayer, CharacterStats, GameSettings, Hotspot } from './types';
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
 
@@ -43,6 +43,9 @@ const App: React.FC = () => {
   const [activeSprite, setActiveSprite] = useState<{ url: string | null; name: string; emotion?: string }>({ url: null, name: '', emotion: 'neutral' });
   const [spriteCache, setSpriteCache] = useState<Record<string, string>>({}); 
   
+  // Interactables
+  const [hotspots, setHotspots] = useState<Hotspot[]>([]);
+
   // Game State
   const [gameStarted, setGameStarted] = useState(false);
   const [characterProfile, setCharacterProfile] = useState<CharacterProfile | null>(null);
@@ -161,13 +164,37 @@ const App: React.FC = () => {
     let cleanText = text;
     let scenePrompt = null;
     let spriteData = null;
+    const foundHotspots: Hotspot[] = [];
+
     const sceneMatches = [...text.matchAll(/\[SCENE:\s*(.*?)\]/gi)];
     if (sceneMatches.length > 0) scenePrompt = sceneMatches[sceneMatches.length - 1][1];
     cleanText = cleanText.replace(/\[SCENE:\s*(.*?)\]/gi, '');
+    
     const spriteMatches = [...text.matchAll(/\[SPRITE:\s*(.*?)\]/gi)];
     if (spriteMatches.length > 0) spriteData = spriteMatches[spriteMatches.length - 1][1];
     cleanText = cleanText.replace(/\[SPRITE:\s*(.*?)\]/gi, '');
-    return { cleanText: cleanText.trim(), scenePrompt, spriteData };
+
+    // Hotspot Parsing: [HOTSPOT: Label, X, Y, Action]
+    const hotspotRegex = /\[HOTSPOT:\s*(.*?)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(.*?)\]/gi;
+    const hotspotMatches = [...text.matchAll(hotspotRegex)];
+    hotspotMatches.forEach(match => {
+        foundHotspots.push({
+            id: generateId(),
+            label: match[1].trim(),
+            x: parseInt(match[2]),
+            y: parseInt(match[3]),
+            action: match[4].trim()
+        });
+    });
+    cleanText = cleanText.replace(hotspotRegex, '');
+
+    // Handle clear tag
+    const clearHotspots = /\[HOTSPOT:\s*CLEAR\]/i.test(text);
+    if (clearHotspots) {
+      cleanText = cleanText.replace(/\[HOTSPOT:\s*CLEAR\]/gi, '');
+    }
+
+    return { cleanText: cleanText.trim(), scenePrompt, spriteData, foundHotspots, clearHotspots };
   };
 
   const parseOptions = (text: string): { narrative: string, choices: string[] } => {
@@ -181,9 +208,10 @@ const App: React.FC = () => {
     return { narrative: text, choices: [] };
   };
 
-  const handleVisualTags = async (scenePrompt: string | null, spriteData: string | null) => {
+  const handleVisualTags = async (scenePrompt: string | null, spriteData: string | null, newHotspots: Hotspot[], shouldClearHotspots: boolean) => {
     if (scenePrompt) {
       try {
+        setHotspots([]); // Always clear hotspots on scene change
         const bgUrl = await generateImageWithGemini(`Visual novel background, ${scenePrompt}`);
         const img = new Image();
         img.src = bgUrl;
@@ -193,7 +221,14 @@ const App: React.FC = () => {
             else { setBgLayer1(newLayerState); setActiveLayer(1); }
         };
       } catch (e) { console.error("BG Gen Error", e); }
+    } else if (shouldClearHotspots) {
+        setHotspots([]);
     }
+
+    if (newHotspots.length > 0) {
+        setHotspots(prev => [...prev, ...newHotspots]);
+    }
+
     if (spriteData) {
       if (spriteData.toUpperCase() === 'CLEAR') {
         setActiveSprite({ url: null, name: '', emotion: 'neutral' });
@@ -302,9 +337,9 @@ const App: React.FC = () => {
 
     try {
       const rawResponse = await sendMessageToGemini(userText, gameSettings);
-      const { cleanText, scenePrompt, spriteData } = parseTags(rawResponse);
+      const { cleanText, scenePrompt, spriteData, foundHotspots, clearHotspots } = parseTags(rawResponse);
       const { narrative, choices } = parseOptions(cleanText);
-      handleVisualTags(scenePrompt, spriteData);
+      handleVisualTags(scenePrompt, spriteData, foundHotspots, clearHotspots);
       
       let audioData = undefined;
       if (isAudioEnabled) {
@@ -333,9 +368,9 @@ const App: React.FC = () => {
     initializeChat(profile);
     try {
       const startResponse = await sendMessageToGemini("START_STORY_NOW", gameSettings);
-      const { cleanText, scenePrompt, spriteData } = parseTags(startResponse);
+      const { cleanText, scenePrompt, spriteData, foundHotspots, clearHotspots } = parseTags(startResponse);
       const { narrative, choices } = parseOptions(cleanText);
-      handleVisualTags(scenePrompt, spriteData);
+      handleVisualTags(scenePrompt, spriteData, foundHotspots, clearHotspots);
       let audioData = undefined;
       if (isAudioEnabled) { audioData = await generateSpeech(narrative); }
       setMessages([{ id: generateId(), role: 'model', text: narrative, choices: choices, timestamp: Date.now(), audio: audioData }]);
@@ -359,6 +394,7 @@ const App: React.FC = () => {
       setBgLayer2({ url: '', type: 'image' });
       setActiveLayer(1);
       setActiveSprite({ url: null, name: '', emotion: 'neutral' });
+      setHotspots([]);
       initializeChat(); 
       setLastSaved(null);
     }
@@ -398,6 +434,25 @@ const App: React.FC = () => {
         {renderBackground(bgLayer1, activeLayer === 1)}
         {renderBackground(bgLayer2, activeLayer === 2)}
       </div>
+      
+      {/* Hotspots Overlay - Z-Index 1 to sit on top of background but below sprite/UI */}
+      <div className="absolute inset-0 z-1 pointer-events-none">
+        {hotspots.map(h => (
+            <button
+            key={h.id}
+            className="absolute w-12 h-12 -ml-6 -mt-6 rounded-full bg-white/10 hover:bg-brand-500/40 border border-white/20 backdrop-blur-sm pointer-events-auto transition-all duration-300 group flex items-center justify-center animate-pulse hover:animate-none"
+            style={{ left: `${h.x}%`, top: `${h.y}%` }}
+            onClick={() => processUserTurn(h.action)}
+            title={h.label}
+            >
+            <Sparkles size={20} className="text-brand-200 group-hover:text-white" />
+            <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity border border-white/10 shadow-lg">
+                {h.label}
+            </span>
+            </button>
+        ))}
+      </div>
+
       {/* Dark overlay specifically for Log View, lighter/none for VN View */}
       <div className={`absolute inset-0 z-0 bg-black pointer-events-none transition-opacity duration-500 ${viewMode === 'vn' ? 'opacity-10' : 'opacity-70 backdrop-blur-sm'}`} />
 

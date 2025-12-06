@@ -33,6 +33,9 @@ You must dynamically generate and track quests to give the story structure.
 1. **Backgrounds:** \`[SCENE: <visual description>]\` (Use detailed prompts like "Luxury penthouse bedroom, morning light, anime style").
 2. **Characters:** \`[SPRITE: <Name>, <Visual Description>, <Emotion>]\` (e.g., \`[SPRITE: Jenny, blonde cheerleader cute, blushing]\`).
    - Use \`[SPRITE: CLEAR]\` to remove characters.
+3. **Interactables:** \`[HOTSPOT: <Label>, <X%>, <Y%>, <Action>]\` (e.g. \`[HOTSPOT: Laptop, 50, 75, Check emails]\`). 
+   - These create clickable regions on the background. Use them for clues, items, or environmental interactions.
+   - Use \`[HOTSPOT: CLEAR]\` to remove all current hotspots.
 
 **CHOICE SYSTEM:**
 At the end of every response, provide 3-4 choices.
