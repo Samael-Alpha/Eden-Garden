@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Image as ImageIcon, Sparkles, Trash2, Zap, MonitorPlay, Volume2, VolumeX, Save, FolderOpen, Wand2, History, MessageSquare, MousePointerClick, MapPin } from 'lucide-react';
+import { Send, Image as ImageIcon, Sparkles, Trash2, Zap, MonitorPlay, Volume2, VolumeX, Save, FolderOpen, Wand2, History, MessageSquare, MousePointerClick, Eye, Hand, Smartphone, Briefcase, Heart, Search } from 'lucide-react';
 import { ChatMessage } from './components/ChatMessage';
 import { CharacterCreator } from './components/CharacterCreator';
 import { SpriteDisplay } from './components/SpriteDisplay';
@@ -12,12 +12,19 @@ import { Message, CharacterProfile, BackgroundLayer, CharacterStats, GameSetting
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
 
-const ACTION_CHIPS = ["Look Around", "Check Phone", "Inventory", "Flirt", "Observing"];
+const QUICK_ACTIONS = [
+    { label: 'Look', icon: Eye, action: 'Look Around' },
+    { label: 'Phone', icon: Smartphone, action: 'Check Phone' },
+    { label: 'Inventory', icon: Briefcase, action: 'Inventory' },
+    { label: 'Flirt', icon: Heart, action: 'Flirt' },
+    { label: 'Search', icon: Search, action: 'Observing' },
+];
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState(''); // Only used for log view fallback
   const [isTyping, setIsTyping] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   
   // View Mode: 'vn' (Cinematic) or 'log' (Chat History)
   const [viewMode, setViewMode] = useState<'vn' | 'log'>('vn');
@@ -53,6 +60,9 @@ const App: React.FC = () => {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Parallax Ref
+  const sceneContainerRef = useRef<HTMLDivElement>(null);
 
   // Load state
   useEffect(() => {
@@ -189,6 +199,17 @@ const App: React.FC = () => {
     }
   }, [fxState.flash]);
 
+  // Parallax Mouse Handler
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!sceneContainerRef.current) return;
+    // Normalized coordinates from -0.5 to 0.5
+    const x = (e.clientX / window.innerWidth) - 0.5;
+    const y = (e.clientY / window.innerHeight) - 0.5;
+    
+    // Update CSS variables for smooth GPU-accelerated transforms
+    sceneContainerRef.current.style.setProperty('--mouse-x', x.toString());
+    sceneContainerRef.current.style.setProperty('--mouse-y', y.toString());
+  }, []);
 
   // Tag Parsing
   const parseTags = (text: string) => {
@@ -286,7 +307,8 @@ const App: React.FC = () => {
            setActiveSprite({ url: spriteCache[cacheKey], name, emotion });
         } else {
            try {
-             const prompt = `visual novel character sprite, waist up portrait, ${parts.join(', ')}, white background, high quality, 3d render style`;
+             // Matching prompt style for sprites
+             const prompt = `visual novel character sprite, waist up portrait, ${parts.join(', ')}, white background, high quality, 3d render style, blender cycles, western cartoon style`;
              const url = await generateImageWithGemini(prompt, 512, 768);
              setSpriteCache(prev => ({ ...prev, [cacheKey]: url }));
              setActiveSprite({ url, name, emotion });
@@ -366,51 +388,105 @@ const App: React.FC = () => {
     }
   };
 
-  // Render logic for BG
-  const renderBackground = (layer: BackgroundLayer, isActive: boolean) => {
-     if (!layer.url) return null;
-     const commonClasses = `absolute inset-0 w-full h-full object-cover transition-opacity duration-[1500ms] ease-in-out`;
-     // Applied animate-pan-zoom to active layer
-     return <div className={`${commonClasses} ${isActive ? 'opacity-100 animate-pan-zoom' : 'opacity-0'}`} style={{ backgroundImage: `url("${layer.url}")`, backgroundPosition: 'center', backgroundSize: 'cover' }} />;
-  };
+  // Render Hotspots helper - Updated to look like game cursors
+  const renderHotspots = () => (
+    <div className="absolute inset-0 w-full h-full">
+      {hotspots.map(h => (
+          <button
+          key={h.id}
+          className="absolute w-16 h-16 -ml-8 -mt-8 pointer-events-auto group flex items-center justify-center transition-transform hover:scale-110"
+          style={{ left: `${h.x}%`, top: `${h.y}%` }}
+          onClick={() => processUserTurn(h.action)}
+          title={h.label}
+          >
+            {/* Outer pulsating ring */}
+            <div className="absolute inset-0 border-2 border-blue-400 rounded-full opacity-60 animate-ping"></div>
+            {/* Inner ring */}
+            <div className="absolute inset-2 border-2 border-white rounded-full opacity-80"></div>
+            
+            {/* Center Dot/Icon */}
+            <div className="relative w-10 h-10 bg-blue-500/30 backdrop-blur-sm rounded-full border border-blue-300 shadow-[0_0_15px_rgba(59,130,246,0.6)] flex items-center justify-center group-hover:bg-blue-500/50 transition-colors">
+               <MousePointerClick size={24} className="text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" />
+            </div>
+            
+            <div className="absolute top-full mt-2 bg-black/80 backdrop-blur-sm text-white text-xs font-bold px-3 py-1 rounded-full border border-blue-500/30 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none transform translate-y-2 group-hover:translate-y-0 z-20">
+                {h.label}
+            </div>
+          </button>
+      ))}
+    </div>
+  );
 
   return (
-    <div className={`flex flex-col h-screen bg-gray-900 transition-colors duration-200 font-sans overflow-hidden relative ${fxState.shake ? 'animate-shake-screen' : ''}`}>
+    <div 
+      className={`flex flex-col h-screen bg-gray-900 transition-colors duration-200 font-sans overflow-hidden relative ${fxState.shake ? 'animate-shake-screen' : ''}`}
+      onMouseMove={handleMouseMove}
+    >
       
       {fxState.flash && <div className="animate-flash-screen" />}
       
-      <ParticleBackground />
-      <div className="absolute inset-0 z-0 bg-black overflow-hidden pointer-events-none">
-        {renderBackground(bgLayer1, activeLayer === 1)}
-        {renderBackground(bgLayer2, activeLayer === 2)}
-      </div>
-      
-      {/* Hotspots Overlay - Styled as interaction points */}
-      <div className="absolute inset-0 z-1 pointer-events-none">
-        {hotspots.map(h => (
-            <button
-            key={h.id}
-            className="absolute w-14 h-14 -ml-7 -mt-7 pointer-events-auto group flex items-center justify-center transition-transform hover:scale-110"
-            style={{ left: `${h.x}%`, top: `${h.y}%` }}
-            onClick={() => processUserTurn(h.action)}
-            title={h.label}
-            >
-              <div className="absolute inset-0 bg-blue-500 rounded-full opacity-30 animate-ping"></div>
-              <div className="relative w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full border-2 border-white shadow-[0_0_15px_rgba(59,130,246,0.5)] flex items-center justify-center">
-                 <MapPin size={20} className="text-white drop-shadow-md" />
-              </div>
-              
-              <div className="absolute top-full mt-2 bg-black/80 backdrop-blur-sm text-white text-xs font-bold px-3 py-1 rounded-full border border-blue-500/30 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none transform translate-y-2 group-hover:translate-y-0">
-                  {h.label}
-              </div>
-            </button>
-        ))}
+      {/* 
+         SCENE CONTAINER
+         Uses CSS variables set by mouse movement for high-performance parallax.
+      */}
+      <div 
+        ref={sceneContainerRef}
+        className="absolute inset-0 z-0 bg-black overflow-hidden pointer-events-none"
+        style={{
+          '--mouse-x': '0',
+          '--mouse-y': '0',
+          // Calculated transforms: Background moves less, Character moves more
+          '--bg-tx': 'calc(var(--mouse-x) * -40px)', 
+          '--bg-ty': 'calc(var(--mouse-y) * -20px)',
+          '--char-tx': 'calc(var(--mouse-x) * -80px)',
+          '--char-ty': 'calc(var(--mouse-y) * -30px)',
+        } as React.CSSProperties}
+      >
+        
+        {/* Layer 1 (Active or Fading Out) */}
+        <div 
+           className="absolute inset-0 w-full h-full transition-opacity duration-1000 ease-in-out will-change-transform"
+           style={{ 
+             opacity: activeLayer === 1 ? 1 : 0,
+             transform: 'translate(var(--bg-tx), var(--bg-ty)) scale(1.1)' 
+           }}
+        >
+          {bgLayer1.url && <div className="absolute inset-0 w-full h-full bg-cover bg-center" style={{ backgroundImage: `url("${bgLayer1.url}")` }} />}
+          {activeLayer === 1 && renderHotspots()}
+        </div>
+
+        {/* Layer 2 (Active or Fading Out) */}
+        <div 
+           className="absolute inset-0 w-full h-full transition-opacity duration-1000 ease-in-out will-change-transform"
+           style={{ 
+             opacity: activeLayer === 2 ? 1 : 0,
+             transform: 'translate(var(--bg-tx), var(--bg-ty)) scale(1.1)'
+           }}
+        >
+           {bgLayer2.url && <div className="absolute inset-0 w-full h-full bg-cover bg-center" style={{ backgroundImage: `url("${bgLayer2.url}")` }} />}
+           {activeLayer === 2 && renderHotspots()}
+        </div>
+
+        {/* Atmosphere Overlay (Particles) */}
+        <div className="absolute inset-0 opacity-60 mix-blend-screen" style={{ transform: 'translate(calc(var(--bg-tx) * 0.5), calc(var(--bg-ty) * 0.5))' }}>
+           <ParticleBackground />
+        </div>
+
+        {/* Character Layer - Moves with separate parallax to create depth (Inside the scene) */}
+        <div 
+           className="absolute inset-0 w-full h-full will-change-transform pointer-events-none"
+           style={{ transform: 'translate(var(--char-tx), var(--char-ty))' }}
+        >
+            <SpriteDisplay imageUrl={activeSprite.url} name={activeSprite.name} emotion={activeSprite.emotion} />
+        </div>
+
+        {/* Vignette / Post-Processing */}
+        <div className="absolute inset-0 bg-radial-gradient from-transparent to-black/40 pointer-events-none" />
+
       </div>
 
       {/* Dark overlay specifically for Log View, lighter/none for VN View */}
       <div className={`absolute inset-0 z-0 bg-black pointer-events-none transition-opacity duration-500 ${viewMode === 'vn' ? 'opacity-0' : 'opacity-70 backdrop-blur-sm'}`} />
-
-      <SpriteDisplay imageUrl={activeSprite.url} name={activeSprite.name} emotion={activeSprite.emotion} />
 
       {/* Header */}
       <header className={`flex-shrink-0 transition-all duration-300 z-50 sticky top-0 text-white ${viewMode === 'vn' ? 'bg-transparent hover:bg-black/40' : 'bg-white/5 backdrop-blur-md border-b border-white/10 shadow-lg'}`}>
@@ -448,16 +524,16 @@ const App: React.FC = () => {
       ) : (
         <>
           {/* Main View Area */}
-          <main className="flex-1 overflow-hidden relative z-10">
+          <main className="flex-1 overflow-hidden relative z-10 pointer-events-none">
             
             {/* LOG VIEW: Standard Chat List */}
             {viewMode === 'log' && (
-              <div className="h-full overflow-y-auto p-4 sm:p-6 scroll-smooth">
+              <div className="h-full overflow-y-auto p-4 sm:p-6 scroll-smooth pointer-events-auto">
                 <div className="max-w-3xl mx-auto pb-32">
                   {messages.map((msg, index) => (
                     <ChatMessage key={msg.id} message={msg} onOptionClick={(opt) => processUserTurn(opt)} isLast={index === messages.length - 1} />
                   ))}
-                  {isTyping && (
+                  {(isTyping || isGeneratingImage) && (
                     <div className="flex justify-start mb-6 opacity-70"><Zap size={16} className="text-brand-400 animate-pulse mr-2" /> <span>Thinking...</span></div>
                   )}
                   <div ref={messagesEndRef} />
@@ -484,9 +560,26 @@ const App: React.FC = () => {
 
           {/* Input Area (Only for Log View) */}
           {viewMode === 'log' && (
-             <footer className="flex-shrink-0 p-4 border-t border-white/10 z-20 relative bg-black/80 backdrop-blur-lg">
+             <footer className="flex-shrink-0 p-4 border-t border-white/10 z-20 relative bg-black/80 backdrop-blur-lg pointer-events-auto">
                <div className="max-w-3xl mx-auto flex flex-col gap-2">
-                 <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">{ACTION_CHIPS.map(action => (<button key={action} onClick={() => processUserTurn(action)} disabled={isTyping} className="flex-shrink-0 px-3 py-1 bg-white/5 hover:bg-brand-600 border border-white/10 rounded-full text-xs text-gray-300 hover:text-white">{action}</button>))}</div>
+                 {/* Quick Actions (Expandable Icons) */}
+                 <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                    {QUICK_ACTIONS.map(qa => (
+                       <button
+                         key={qa.label}
+                         onClick={() => processUserTurn(qa.action)}
+                         disabled={isTyping}
+                         className="group flex items-center gap-2 px-2.5 py-2 bg-white/5 hover:bg-brand-600 rounded-full border border-white/10 transition-all duration-500 ease-out max-w-[42px] hover:max-w-[140px] overflow-hidden whitespace-nowrap"
+                         title={qa.label}
+                       >
+                          <qa.icon size={18} className="flex-shrink-0 text-gray-300 group-hover:text-white" />
+                          <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-xs font-bold text-gray-200 group-hover:text-white pr-2">
+                            {qa.label}
+                          </span>
+                       </button>
+                    ))}
+                 </div>
+                 
                  <div className="relative flex items-end gap-2 bg-white/5 p-2 rounded-3xl border border-white/10">
                     <textarea value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Type action..." className="flex-1 max-h-32 min-h-[44px] py-3 px-2 bg-transparent text-gray-100 focus:outline-none resize-none" rows={1} />
                     <button onClick={handleSendMessage} disabled={!inputValue.trim() || isTyping} className="p-3 mb-1 bg-brand-600 hover:bg-brand-500 text-white rounded-full"><Send size={20} /></button>

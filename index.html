@@ -54,29 +54,60 @@
         background: #4c1d95;
       }
 
-      /* Character Animations - Slower, deeper breathing for 3D effect */
-      @keyframes breathe {
-        0%, 100% { transform: scale(1) translateY(0); }
-        50% { transform: scale(1.02) translateY(-6px); }
+      /* --- Character Animations: Nuanced Idle States --- */
+      
+      /* Standard Idle: Gentle breathing + subtle rotation */
+      @keyframes idle-standard {
+        0% { transform: scale(1) translateY(0) rotate(0deg); }
+        33% { transform: scale(1.002) translateY(-2px) rotate(0.2deg); }
+        66% { transform: scale(1.005) translateY(-3px) rotate(-0.2deg); }
+        100% { transform: scale(1) translateY(0) rotate(0deg); }
       }
-      @keyframes shake {
+
+      /* Angry/Tense: Faster, sharper movements, slight jitter */
+      @keyframes idle-angry {
+        0% { transform: scale(1) translateY(0); filter: contrast(1); }
+        50% { transform: scale(1.03) translateY(2px); filter: contrast(1.1); }
+        52% { transform: scale(1.03) translateY(2px) translateX(1px); }
+        54% { transform: scale(1.03) translateY(2px) translateX(-1px); }
+        100% { transform: scale(1) translateY(0); filter: contrast(1); }
+      }
+
+      /* Happy/Excited: Bouncy and light */
+      @keyframes idle-happy {
+        0% { transform: translateY(0); }
+        50% { transform: translateY(-8px) scale(1.01); }
+        100% { transform: translateY(0); }
+      }
+
+      /* Sad: Drooping, slower, slightly dimmed */
+      @keyframes idle-sad {
+        0% { transform: scaleY(1) translateY(0) brightness(1); }
+        50% { transform: scaleY(0.99) translateY(4px) brightness(0.95); }
+        100% { transform: scaleY(1) translateY(0) brightness(1); }
+      }
+
+      /* Flirty: Sinuous swaying motion */
+      @keyframes idle-flirty {
+        0% { transform: rotate(0deg) translateY(0); }
+        25% { transform: rotate(1deg) translateY(-2px); }
+        75% { transform: rotate(-1deg) translateY(-1px); }
+        100% { transform: rotate(0deg) translateY(0); }
+      }
+
+      /* Shock: Sudden recoil and vibration */
+      @keyframes shock-shake {
         0%, 100% { transform: translateX(0); }
-        10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
-        20%, 40%, 60%, 80% { transform: translateX(4px); }
+        10%, 30%, 50%, 70%, 90% { transform: translateX(-6px) rotate(-1deg); }
+        20%, 40%, 60%, 80% { transform: translateX(6px) rotate(1deg); }
       }
-      @keyframes bounce-subtle {
-         0%, 100% { transform: translateY(0); }
-         50% { transform: translateY(-10px); }
-      }
-      .animate-breathe {
-        animation: breathe 6s ease-in-out infinite;
-      }
-      .animate-shake {
-        animation: shake 0.5s ease-in-out infinite;
-      }
-      .animate-bounce-subtle {
-        animation: bounce-subtle 2s ease-in-out infinite;
-      }
+
+      .animate-idle-standard { animation: idle-standard 6s ease-in-out infinite; }
+      .animate-idle-angry { animation: idle-angry 4s ease-in-out infinite; }
+      .animate-idle-happy { animation: idle-happy 3s ease-in-out infinite; }
+      .animate-idle-sad { animation: idle-sad 8s ease-in-out infinite; }
+      .animate-idle-flirty { animation: idle-flirty 5s ease-in-out infinite; }
+      .animate-shock { animation: shock-shake 0.5s ease-in-out; }
 
       /* Background Animations */
       @keyframes pan-zoom {

@@ -30,7 +30,7 @@ You must dynamically generate and track quests to give the story structure.
 - **Tracking:** For every girl, track [Love], [Lust], and [Submission].
 
 **VISUAL TAGS (Mandatory):**
-1. **Backgrounds:** \`[SCENE: <visual description>]\` (Use detailed prompts like "Luxury penthouse bedroom, morning light, anime style").
+1. **Backgrounds:** \`[SCENE: <visual description>]\` (Use detailed prompts like "Luxury penthouse bedroom, morning light, 3D render style").
 2. **Characters:** \`[SPRITE: <Name>, <Visual Description>, <Emotion>]\` (e.g., \`[SPRITE: Jenny, blonde cheerleader cute, blushing]\`).
    - Use \`[SPRITE: CLEAR]\` to remove characters.
 3. **Interactables:** \`[HOTSPOT: <Label>, <X%>, <Y%>, <Action>]\` (e.g. \`[HOTSPOT: Laptop, 50, 75, Check emails]\`). 
@@ -143,10 +143,11 @@ export const sendMessageToGemini = async (text: string, settings?: GameSettings)
 };
 
 export const generateImageWithGemini = async (prompt: string, width: number = 1024, height: number = 1024): Promise<string> => {
-  // Using Pollinations.ai to satisfy the request for unrestricted, Perchance-like generation.
-  // Updated prompt for "Summertime Saga" / Cinematic VN style (more 3D/rendered look, less flat anime)
+  // Using Pollinations.ai with a specific prompt engineering strategy to match Summertime Saga
+  // Key elements: 3D render, western style, vibrant, slightly cartoonish but deep shading.
   
-  const enhancedPrompt = `cinematic shot, masterpiece, best quality, western visual novel style, summer time saga art style, 3d render style, detailed anatomy, soft lighting, ${prompt}`;
+  const stylePrompt = "western adult visual novel art style, summertime saga style, 3d render, blender cycles, vibrant colors, cel shaded 3d, high quality texture, 4k";
+  const enhancedPrompt = `${stylePrompt}, ${prompt}`;
   const encodedPrompt = encodeURIComponent(enhancedPrompt);
   const seed = Math.floor(Math.random() * 1000000);
   
