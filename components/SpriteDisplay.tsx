@@ -45,14 +45,14 @@ export const SpriteDisplay: React.FC<SpriteDisplayProps> = ({ imageUrl, name, em
 
   return (
     <div 
-      className={`fixed bottom-0 left-1/2 -translate-x-1/2 z-0 pointer-events-none transition-all duration-700 ease-out transform
-        ${isVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}
+      className={`fixed bottom-0 left-1/2 -translate-x-1/2 z-0 pointer-events-none transition-all duration-1000 ease-in-out transform
+        ${isVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-12 opacity-0 scale-95'}
       `}
       style={{
-        height: 'min(85vh, 800px)',
+        height: 'min(90vh, 900px)', // Slightly taller
         width: 'auto',
         maxWidth: '100vw',
-        filter: 'drop-shadow(0 0 20px rgba(0,0,0,0.5))' // Cinematic depth
+        filter: 'drop-shadow(0 10px 30px rgba(0,0,0,0.6))' // Deeper shadow for 3D separation
       }}
     >
       <div className="relative h-full flex flex-col items-center justify-end">
@@ -62,18 +62,11 @@ export const SpriteDisplay: React.FC<SpriteDisplayProps> = ({ imageUrl, name, em
           alt="Character Sprite" 
           className={`h-full w-auto object-contain ${isVisible ? animationClass : ''}`}
           style={{
-             // Slight vignette fade at bottom to blend with text box
-             maskImage: 'linear-gradient(to bottom, black 85%, transparent 100%)',
-             WebkitMaskImage: 'linear-gradient(to bottom, black 85%, transparent 100%)'
+             // Softer bottom fade
+             maskImage: 'linear-gradient(to bottom, black 90%, transparent 100%)',
+             WebkitMaskImage: 'linear-gradient(to bottom, black 90%, transparent 100%)'
           }}
         />
-        
-        {/* Name Tag - Optional visual helper if text box doesn't cover it */}
-        {name && isVisible && false && (
-          <div className="absolute bottom-20 md:bottom-12 bg-black/70 backdrop-blur-md text-white px-6 py-2 rounded-full border border-white/20 shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-700 delay-300">
-            <span className="font-bold text-lg tracking-wide text-brand-200">{name}</span>
-          </div>
-        )}
       </div>
     </div>
   );

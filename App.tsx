@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Image as ImageIcon, Sparkles, Trash2, Zap, MonitorPlay, Volume2, VolumeX, Clapperboard, Film, Save, FolderOpen, Wand2, History, MessageSquare, MousePointerClick } from 'lucide-react';
+import { Send, Image as ImageIcon, Sparkles, Trash2, Zap, MonitorPlay, Volume2, VolumeX, Save, FolderOpen, Wand2, History, MessageSquare, MousePointerClick, MapPin } from 'lucide-react';
 import { ChatMessage } from './components/ChatMessage';
 import { CharacterCreator } from './components/CharacterCreator';
 import { SpriteDisplay } from './components/SpriteDisplay';
@@ -7,7 +7,7 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { ParticleBackground } from './components/ParticleBackground';
 import { CheatMenu } from './components/CheatMenu';
 import { VisualNovelUI } from './components/VisualNovelUI';
-import { initializeChat, sendMessageToGemini, generateImageWithGemini, generateSpeech, generateSceneVideo } from './services/geminiService';
+import { initializeChat, sendMessageToGemini, generateImageWithGemini, generateSpeech } from './services/geminiService';
 import { Message, CharacterProfile, BackgroundLayer, CharacterStats, GameSettings, Hotspot } from './types';
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
@@ -18,8 +18,6 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState(''); // Only used for log view fallback
   const [isTyping, setIsTyping] = useState(false);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   
   // View Mode: 'vn' (Cinematic) or 'log' (Chat History)
   const [viewMode, setViewMode] = useState<'vn' | 'log'>('vn');
@@ -27,7 +25,10 @@ const App: React.FC = () => {
   // Audio State
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
 
-  // Settings State - Default to "Unrestricted/Free" mode as requested
+  // FX State
+  const [fxState, setFxState] = useState({ shake: false, flash: false });
+
+  // Settings State
   const [showCheatMenu, setShowCheatMenu] = useState(false);
   const [gameSettings, setGameSettings] = useState<GameSettings>({
     godMode: true,        // Enabled by default
@@ -58,7 +59,6 @@ const App: React.FC = () => {
     const savedProfile = localStorage.getItem('narrative_profile');
     const savedMessages = localStorage.getItem('narrative_messages');
     const savedBg = localStorage.getItem('narrative_bg');
-    const savedBgType = localStorage.getItem('narrative_bg_type');
     const savedGameStarted = localStorage.getItem('narrative_started');
 
     if (savedProfile && savedMessages && savedGameStarted === 'true') {
@@ -70,7 +70,7 @@ const App: React.FC = () => {
         setMessages(parsedMessages);
         
         if (savedBg) {
-          setBgLayer1({ url: savedBg, type: (savedBgType as 'image'|'video') || 'image' });
+          setBgLayer1({ url: savedBg, type: 'image' });
           setActiveLayer(1);
         }
         
@@ -89,13 +89,27 @@ const App: React.FC = () => {
     stateRef.current = { messages, characterProfile, bgLayer1, bgLayer2, activeLayer, gameStarted };
   }, [messages, characterProfile, bgLayer1, bgLayer2, activeLayer, gameStarted]);
 
+  // Helper to compress messages for storage (removes heavy audio/base64 data)
+  const compressMessages = (msgs: Message[]): Message[] => {
+    return msgs.map(msg => {
+      // Create a copy without audio
+      const { audio, ...rest } = msg;
+      // Also remove large legacy images if present
+      if (rest.image && rest.image.length > 5000) {
+         return { ...rest, image: undefined };
+      }
+      return rest;
+    });
+  };
+
   useEffect(() => {
     const saveGame = () => {
       const { gameStarted, characterProfile, messages, activeLayer, bgLayer1, bgLayer2 } = stateRef.current;
       if (gameStarted && characterProfile) {
         try {
+            const compressedMessages = compressMessages(messages);
             localStorage.setItem('narrative_profile', JSON.stringify(characterProfile));
-            localStorage.setItem('narrative_messages', JSON.stringify(messages));
+            localStorage.setItem('narrative_messages', JSON.stringify(compressedMessages));
             const activeBg = activeLayer === 1 ? bgLayer1 : bgLayer2;
             localStorage.setItem('narrative_bg', activeBg.url);
             localStorage.setItem('narrative_bg_type', activeBg.type);
@@ -119,14 +133,15 @@ const App: React.FC = () => {
       const { gameStarted, characterProfile, messages, activeLayer, bgLayer1, bgLayer2 } = stateRef.current;
       if (!gameStarted || !characterProfile) return;
       try {
+          const compressedMessages = compressMessages(messages);
           localStorage.setItem('manual_narrative_profile', JSON.stringify(characterProfile));
-          localStorage.setItem('manual_narrative_messages', JSON.stringify(messages));
+          localStorage.setItem('manual_narrative_messages', JSON.stringify(compressedMessages));
           const activeBg = activeLayer === 1 ? bgLayer1 : bgLayer2;
           localStorage.setItem('manual_narrative_bg', activeBg.url);
           localStorage.setItem('manual_narrative_bg_type', activeBg.type);
           alert(`Game saved manually at ${new Date().toLocaleTimeString()}`);
           setLastSaved(new Date());
-      } catch (e) { alert("Failed to save game."); }
+      } catch (e) { alert("Failed to save game. Storage full."); }
   };
 
   const handleManualLoad = () => {
@@ -159,12 +174,29 @@ const App: React.FC = () => {
   };
   useEffect(() => { scrollToBottom(); }, [messages, isTyping, viewMode]);
 
+  // Handle FX Timeouts
+  useEffect(() => {
+    if (fxState.shake) {
+        const timer = setTimeout(() => setFxState(prev => ({...prev, shake: false})), 500);
+        return () => clearTimeout(timer);
+    }
+  }, [fxState.shake]);
+
+  useEffect(() => {
+    if (fxState.flash) {
+        const timer = setTimeout(() => setFxState(prev => ({...prev, flash: false})), 1000);
+        return () => clearTimeout(timer);
+    }
+  }, [fxState.flash]);
+
+
   // Tag Parsing
   const parseTags = (text: string) => {
     let cleanText = text;
     let scenePrompt = null;
     let spriteData = null;
     const foundHotspots: Hotspot[] = [];
+    const effects = { shake: false, flash: false };
 
     const sceneMatches = [...text.matchAll(/\[SCENE:\s*(.*?)\]/gi)];
     if (sceneMatches.length > 0) scenePrompt = sceneMatches[sceneMatches.length - 1][1];
@@ -194,7 +226,17 @@ const App: React.FC = () => {
       cleanText = cleanText.replace(/\[HOTSPOT:\s*CLEAR\]/gi, '');
     }
 
-    return { cleanText: cleanText.trim(), scenePrompt, spriteData, foundHotspots, clearHotspots };
+    // FX Parsing
+    if (/\[FX:\s*SHAKE\]/i.test(text)) {
+        effects.shake = true;
+        cleanText = cleanText.replace(/\[FX:\s*SHAKE\]/gi, '');
+    }
+    if (/\[FX:\s*FLASH\]/i.test(text)) {
+        effects.flash = true;
+        cleanText = cleanText.replace(/\[FX:\s*FLASH\]/gi, '');
+    }
+
+    return { cleanText: cleanText.trim(), scenePrompt, spriteData, foundHotspots, clearHotspots, effects };
   };
 
   const parseOptions = (text: string): { narrative: string, choices: string[] } => {
@@ -208,7 +250,10 @@ const App: React.FC = () => {
     return { narrative: text, choices: [] };
   };
 
-  const handleVisualTags = async (scenePrompt: string | null, spriteData: string | null, newHotspots: Hotspot[], shouldClearHotspots: boolean) => {
+  const handleVisualTags = async (scenePrompt: string | null, spriteData: string | null, newHotspots: Hotspot[], shouldClearHotspots: boolean, effects: { shake: boolean, flash: boolean }) => {
+    if (effects.shake) setFxState(prev => ({ ...prev, shake: true }));
+    if (effects.flash) setFxState(prev => ({ ...prev, flash: true }));
+    
     if (scenePrompt) {
       try {
         setHotspots([]); // Always clear hotspots on scene change
@@ -241,7 +286,6 @@ const App: React.FC = () => {
            setActiveSprite({ url: spriteCache[cacheKey], name, emotion });
         } else {
            try {
-             // Create a detailed prompt for character
              const prompt = `visual novel character sprite, waist up portrait, ${parts.join(', ')}, white background, high quality, 3d render style`;
              const url = await generateImageWithGemini(prompt, 512, 768);
              setSpriteCache(prev => ({ ...prev, [cacheKey]: url }));
@@ -252,84 +296,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Logic to generate video from the current context
-  const handleGenerateVideo = useCallback(async () => {
-    if (isGeneratingVideo) return;
-    
-    // Check if we need to force key selection upfront
-    // @ts-ignore
-    if (window.aistudio && window.aistudio.hasSelectedApiKey && !await window.aistudio.hasSelectedApiKey()) {
-        try {
-            // @ts-ignore
-            await window.aistudio.openSelectKey();
-        } catch (e) {
-            console.error("Key selection cancelled", e);
-            return;
-        }
-    }
-    
-    // Attempt to extract a scene description from the last message or context
-    const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
-    // Use the last message text, limited to 200 chars for the prompt
-    const prompt = lastMsg ? lastMsg.text.slice(0, 200) : "Cinematic landscape";
-
-    setIsGeneratingVideo(true);
-    
-    // Add a temporary system message to indicate work
-    const loadingId = generateId();
-    setMessages(prev => [...prev, { id: loadingId, role: 'model', text: "(Animating the current scene...)", timestamp: Date.now() }]);
-
-    try {
-        const videoUrl = await generateSceneVideo(prompt);
-        const newLayer: BackgroundLayer = { url: videoUrl, type: 'video' };
-        
-        // Update background layer
-        if (activeLayer === 1) {
-            setBgLayer2(newLayer);
-            setActiveLayer(2);
-        } else {
-            setBgLayer1(newLayer);
-            setActiveLayer(1);
-        }
-        
-        // Remove loading message
-        setMessages(prev => prev.filter(m => m.id !== loadingId));
-
-    } catch (e: any) {
-        console.error("Video failed", e);
-        
-        // Robust check for 404/Not Found which implies missing Paid API key for Veo
-        let isAuthError = false;
-        try {
-            const errorStr = JSON.stringify(e);
-            isAuthError = errorStr.includes("404") || 
-                          errorStr.includes("NOT_FOUND") || 
-                          errorStr.includes("Requested entity was not found");
-        } catch (jsonError) {
-            // Fallback if stringify fails
-            isAuthError = e.toString().includes("Requested entity was not found") || 
-                          e.message?.includes("Requested entity was not found") || 
-                          e.status === 404;
-        }
-
-        if (isAuthError) {
-             // Trigger key selection if available
-             // @ts-ignore - aistudio is injected in this specific environment
-             if (window.aistudio && window.aistudio.openSelectKey) {
-                 // @ts-ignore
-                 await window.aistudio.openSelectKey();
-                 setMessages(prev => prev.map(m => m.id === loadingId ? { ...m, text: "(Paid API Key required for Video. Please select a key in the pop-up and click the video button again.)", isError: true } : m));
-             } else {
-                 setMessages(prev => prev.map(m => m.id === loadingId ? { ...m, text: "(Video generation requires a paid API key.)", isError: true } : m));
-             }
-        } else {
-            setMessages(prev => prev.map(m => m.id === loadingId ? { ...m, text: "(Video generation failed. Please try again.)", isError: true } : m));
-        }
-    } finally {
-        setIsGeneratingVideo(false);
-    }
-  }, [messages, activeLayer, isGeneratingVideo]);
-
   const processUserTurn = async (userText: string) => {
     const newMessage: Message = { id: generateId(), role: 'user', text: userText, timestamp: Date.now() };
     setMessages(prev => [...prev, newMessage]);
@@ -337,9 +303,9 @@ const App: React.FC = () => {
 
     try {
       const rawResponse = await sendMessageToGemini(userText, gameSettings);
-      const { cleanText, scenePrompt, spriteData, foundHotspots, clearHotspots } = parseTags(rawResponse);
+      const { cleanText, scenePrompt, spriteData, foundHotspots, clearHotspots, effects } = parseTags(rawResponse);
       const { narrative, choices } = parseOptions(cleanText);
-      handleVisualTags(scenePrompt, spriteData, foundHotspots, clearHotspots);
+      handleVisualTags(scenePrompt, spriteData, foundHotspots, clearHotspots, effects);
       
       let audioData = undefined;
       if (isAudioEnabled) {
@@ -368,9 +334,9 @@ const App: React.FC = () => {
     initializeChat(profile);
     try {
       const startResponse = await sendMessageToGemini("START_STORY_NOW", gameSettings);
-      const { cleanText, scenePrompt, spriteData, foundHotspots, clearHotspots } = parseTags(startResponse);
+      const { cleanText, scenePrompt, spriteData, foundHotspots, clearHotspots, effects } = parseTags(startResponse);
       const { narrative, choices } = parseOptions(cleanText);
-      handleVisualTags(scenePrompt, spriteData, foundHotspots, clearHotspots);
+      handleVisualTags(scenePrompt, spriteData, foundHotspots, clearHotspots, effects);
       let audioData = undefined;
       if (isAudioEnabled) { audioData = await generateSpeech(narrative); }
       setMessages([{ id: generateId(), role: 'model', text: narrative, choices: choices, timestamp: Date.now(), audio: audioData }]);
@@ -403,85 +369,63 @@ const App: React.FC = () => {
   // Render logic for BG
   const renderBackground = (layer: BackgroundLayer, isActive: boolean) => {
      if (!layer.url) return null;
-     const commonClasses = `absolute inset-0 w-full h-full object-cover transition-opacity duration-[2000ms] ease-in-out transform transition-transform duration-[20000ms] ease-out`;
-     const style = { opacity: isActive ? 1 : 0, transform: isActive ? 'scale(1.1)' : 'scale(1)' }; // Opacity 1 for cinematic view
-     
-     if (layer.type === 'video') {
-         return (
-            <video 
-                key={layer.url} 
-                src={layer.url} 
-                autoPlay 
-                loop 
-                muted 
-                playsInline 
-                className={commonClasses} 
-                style={style}
-                onLoadedData={(e) => {
-                    // Force play if autoplay fails
-                    e.currentTarget.play().catch(err => console.error("Auto-play failed", err));
-                }}
-            />
-         );
-     }
-     return <div className={commonClasses} style={{ ...style, backgroundImage: `url("${layer.url}")`, backgroundPosition: 'center', backgroundSize: 'cover' }} />;
+     const commonClasses = `absolute inset-0 w-full h-full object-cover transition-opacity duration-[1500ms] ease-in-out`;
+     // Applied animate-pan-zoom to active layer
+     return <div className={`${commonClasses} ${isActive ? 'opacity-100 animate-pan-zoom' : 'opacity-0'}`} style={{ backgroundImage: `url("${layer.url}")`, backgroundPosition: 'center', backgroundSize: 'cover' }} />;
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-900 transition-colors duration-200 font-sans overflow-hidden relative">
+    <div className={`flex flex-col h-screen bg-gray-900 transition-colors duration-200 font-sans overflow-hidden relative ${fxState.shake ? 'animate-shake-screen' : ''}`}>
+      
+      {fxState.flash && <div className="animate-flash-screen" />}
+      
       <ParticleBackground />
       <div className="absolute inset-0 z-0 bg-black overflow-hidden pointer-events-none">
         {renderBackground(bgLayer1, activeLayer === 1)}
         {renderBackground(bgLayer2, activeLayer === 2)}
       </div>
       
-      {/* Hotspots Overlay - Z-Index 1 to sit on top of background but below sprite/UI */}
+      {/* Hotspots Overlay - Styled as interaction points */}
       <div className="absolute inset-0 z-1 pointer-events-none">
         {hotspots.map(h => (
             <button
             key={h.id}
-            className="absolute w-12 h-12 -ml-6 -mt-6 rounded-full bg-white/10 hover:bg-brand-500/40 border border-white/20 backdrop-blur-sm pointer-events-auto transition-all duration-300 group flex items-center justify-center animate-pulse hover:animate-none"
+            className="absolute w-14 h-14 -ml-7 -mt-7 pointer-events-auto group flex items-center justify-center transition-transform hover:scale-110"
             style={{ left: `${h.x}%`, top: `${h.y}%` }}
             onClick={() => processUserTurn(h.action)}
             title={h.label}
             >
-            <Sparkles size={20} className="text-brand-200 group-hover:text-white" />
-            <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity border border-white/10 shadow-lg">
-                {h.label}
-            </span>
+              <div className="absolute inset-0 bg-blue-500 rounded-full opacity-30 animate-ping"></div>
+              <div className="relative w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full border-2 border-white shadow-[0_0_15px_rgba(59,130,246,0.5)] flex items-center justify-center">
+                 <MapPin size={20} className="text-white drop-shadow-md" />
+              </div>
+              
+              <div className="absolute top-full mt-2 bg-black/80 backdrop-blur-sm text-white text-xs font-bold px-3 py-1 rounded-full border border-blue-500/30 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none transform translate-y-2 group-hover:translate-y-0">
+                  {h.label}
+              </div>
             </button>
         ))}
       </div>
 
       {/* Dark overlay specifically for Log View, lighter/none for VN View */}
-      <div className={`absolute inset-0 z-0 bg-black pointer-events-none transition-opacity duration-500 ${viewMode === 'vn' ? 'opacity-10' : 'opacity-70 backdrop-blur-sm'}`} />
+      <div className={`absolute inset-0 z-0 bg-black pointer-events-none transition-opacity duration-500 ${viewMode === 'vn' ? 'opacity-0' : 'opacity-70 backdrop-blur-sm'}`} />
 
       <SpriteDisplay imageUrl={activeSprite.url} name={activeSprite.name} emotion={activeSprite.emotion} />
 
       {/* Header */}
       <header className={`flex-shrink-0 transition-all duration-300 z-50 sticky top-0 text-white ${viewMode === 'vn' ? 'bg-transparent hover:bg-black/40' : 'bg-white/5 backdrop-blur-md border-b border-white/10 shadow-lg'}`}>
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-brand-300 drop-shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-brand-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
             <MonitorPlay className="w-6 h-6" />
-            <h1 className="font-bold text-xl tracking-tight text-white hidden md:block">Eden Garden</h1>
+            <h1 className="font-bold text-xl tracking-tight text-white hidden md:block" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>Eden Garden</h1>
           </div>
-          <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md p-1.5 rounded-full border border-white/10">
+          <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md p-1.5 rounded-full border border-white/10 shadow-lg">
              <button onClick={handleManualSave} disabled={!gameStarted} className="p-2 text-gray-300 hover:text-green-400 rounded-full transition-colors"><Save size={18} /></button>
              <button onClick={handleManualLoad} className="p-2 text-gray-300 hover:text-blue-400 rounded-full transition-colors"><FolderOpen size={18} /></button>
              <button onClick={() => setShowCheatMenu(true)} className="p-2 text-brand-300 hover:text-white rounded-full transition-colors animate-pulse"><Wand2 size={18} /></button>
              
              <div className="h-5 w-px bg-white/20 mx-1"></div>
              
-             {/* Video Trigger */}
-             <button 
-                onClick={handleGenerateVideo} 
-                disabled={isGeneratingVideo || !gameStarted}
-                className={`p-2 rounded-full transition-colors ${isGeneratingVideo ? 'text-brand-400 animate-pulse' : 'text-gray-300 hover:text-white hover:bg-white/10'}`}
-                title="Animate Current Scene"
-             >
-                <Clapperboard size={18} />
-             </button>
-
              {/* View Toggle */}
              <button 
                onClick={() => setViewMode(viewMode === 'vn' ? 'log' : 'vn')} 
@@ -513,7 +457,7 @@ const App: React.FC = () => {
                   {messages.map((msg, index) => (
                     <ChatMessage key={msg.id} message={msg} onOptionClick={(opt) => processUserTurn(opt)} isLast={index === messages.length - 1} />
                   ))}
-                  {(isTyping || isGeneratingImage) && (
+                  {isTyping && (
                     <div className="flex justify-start mb-6 opacity-70"><Zap size={16} className="text-brand-400 animate-pulse mr-2" /> <span>Thinking...</span></div>
                   )}
                   <div ref={messagesEndRef} />

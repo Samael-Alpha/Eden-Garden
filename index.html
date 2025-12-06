@@ -54,28 +54,81 @@
         background: #4c1d95;
       }
 
-      /* Character Animations */
+      /* Character Animations - Slower, deeper breathing for 3D effect */
       @keyframes breathe {
         0%, 100% { transform: scale(1) translateY(0); }
-        50% { transform: scale(1.015) translateY(-4px); }
+        50% { transform: scale(1.02) translateY(-6px); }
       }
       @keyframes shake {
         0%, 100% { transform: translateX(0); }
-        10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
-        20%, 40%, 60%, 80% { transform: translateX(2px); }
+        10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+        20%, 40%, 60%, 80% { transform: translateX(4px); }
       }
       @keyframes bounce-subtle {
          0%, 100% { transform: translateY(0); }
-         50% { transform: translateY(-8px); }
+         50% { transform: translateY(-10px); }
       }
       .animate-breathe {
-        animation: breathe 5s ease-in-out infinite;
+        animation: breathe 6s ease-in-out infinite;
       }
       .animate-shake {
-        animation: shake 0.6s ease-in-out infinite;
+        animation: shake 0.5s ease-in-out infinite;
       }
       .animate-bounce-subtle {
-        animation: bounce-subtle 2.5s ease-in-out infinite;
+        animation: bounce-subtle 2s ease-in-out infinite;
+      }
+
+      /* Background Animations */
+      @keyframes pan-zoom {
+        0% { transform: scale(1.1) translate(0, 0); }
+        25% { transform: scale(1.15) translate(-1%, -1%); }
+        50% { transform: scale(1.1) translate(-2%, 0); }
+        75% { transform: scale(1.15) translate(-1%, 1%); }
+        100% { transform: scale(1.1) translate(0, 0); }
+      }
+      .animate-pan-zoom {
+        animation: pan-zoom 40s ease-in-out infinite;
+        will-change: transform;
+      }
+
+      /* Screen Effects */
+      @keyframes shake-screen {
+        0%, 100% { transform: translate(0, 0); }
+        10% { transform: translate(-5px, -5px) rotate(-1deg); }
+        20% { transform: translate(5px, 5px) rotate(1deg); }
+        30% { transform: translate(-5px, 5px); }
+        40% { transform: translate(5px, -5px); }
+        50% { transform: translate(-3px, 3px); }
+        60% { transform: translate(3px, -3px); }
+        70% { transform: translate(0, 2px); }
+        80% { transform: translate(-1px, 0); }
+      }
+      .animate-shake-screen {
+        animation: shake-screen 0.5s cubic-bezier(.36,.07,.19,.97) both;
+      }
+
+      @keyframes flash-screen {
+        0% { background-color: rgba(255,255,255,0); }
+        10% { background-color: rgba(255,255,255,0.9); }
+        100% { background-color: rgba(255,255,255,0); }
+      }
+      .animate-flash-screen {
+        animation: flash-screen 0.8s ease-out forwards;
+      }
+
+      /* Choice Glows */
+      .glow-wealth {
+        box-shadow: 0 0 15px rgba(251, 191, 36, 0.4);
+        animation: pulse-gold 2s infinite;
+      }
+      @keyframes pulse-gold {
+        0%, 100% { box-shadow: 0 0 15px rgba(251, 191, 36, 0.4); border-color: rgba(251, 191, 36, 0.6); }
+        50% { box-shadow: 0 0 25px rgba(251, 191, 36, 0.7); border-color: rgba(251, 191, 36, 1); }
+      }
+      
+      /* Glossy Button Effect */
+      .glossy-button {
+        background: linear-gradient(to bottom, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 51%, rgba(0,0,0,0.2) 100%);
       }
     </style>
   <script type="importmap">
@@ -91,7 +144,7 @@
 }
 </script>
 </head>
-  <body class="bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 transition-colors duration-200">
+  <body class="bg-gray-900 text-gray-100 overflow-hidden">
     <div id="root"></div>
   </body>
 </html>

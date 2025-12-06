@@ -36,6 +36,9 @@ You must dynamically generate and track quests to give the story structure.
 3. **Interactables:** \`[HOTSPOT: <Label>, <X%>, <Y%>, <Action>]\` (e.g. \`[HOTSPOT: Laptop, 50, 75, Check emails]\`). 
    - These create clickable regions on the background. Use them for clues, items, or environmental interactions.
    - Use \`[HOTSPOT: CLEAR]\` to remove all current hotspots.
+4. **Special Effects:** 
+   - \`[FX: SHAKE]\`: Use this when something shocking, loud, or impactful happens (e.g., a slap, a crash, a sudden realization).
+   - \`[FX: FLASH]\`: Use this for blinding lights, camera flashes, or magical/epiphanic moments.
 
 **CHOICE SYSTEM:**
 At the end of every response, provide 3-4 choices.
@@ -185,40 +188,5 @@ export const generateSpeech = async (text: string): Promise<string> => {
   } catch (error) {
     console.error("TTS Error:", error);
     return "";
-  }
-};
-
-export const generateSceneVideo = async (prompt: string): Promise<string> => {
-  try {
-    console.log("Starting video generation for:", prompt);
-    const ai = getAiClient();
-    
-    let operation = await ai.models.generateVideos({
-      model: 'veo-3.1-fast-generate-preview',
-      prompt: `Cinematic shot, high quality, looping background, ${prompt}`,
-      config: {
-        numberOfVideos: 1,
-        resolution: '720p',
-        aspectRatio: '16:9'
-      }
-    });
-
-    console.log("Video operation started...");
-
-    // Poll until complete
-    while (!operation.done) {
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Check every 5s
-      operation = await ai.operations.getVideosOperation({operation: operation});
-      console.log("Polling video status...");
-    }
-
-    const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!videoUri) throw new Error("No video URI returned");
-
-    // The URI needs the API key to be accessible
-    return `${videoUri}&key=${process.env.API_KEY}`;
-  } catch (error) {
-    console.error("Video Generation Error:", error);
-    throw error;
   }
 };

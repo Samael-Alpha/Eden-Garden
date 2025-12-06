@@ -4,7 +4,6 @@ export interface Message {
   text: string;
   timestamp: number;
   image?: string; // Base64 string or URL for generated images
-  video?: string; // URL for generated video
   audio?: string; // Base64 string for audio (TTS)
   isError?: boolean;
   choices?: string[]; // Parsed interactive choices
@@ -37,7 +36,7 @@ export interface CharacterProfile {
 
 export type BackgroundLayer = {
   url: string;
-  type: 'image' | 'video';
+  type: 'image';
 };
 
 export interface Hotspot {

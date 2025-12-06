@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Message } from '../types';
-import { User, Bot, AlertCircle, ChevronRight, Play, Pause, Film, Dices, Hexagon, Trophy, Scroll, Star } from 'lucide-react';
+import { User, Bot, AlertCircle, ChevronRight, Play, Pause, Dices, Hexagon, Trophy, Scroll, Star } from 'lucide-react';
 
 interface ChatMessageProps {
   message: Message;
@@ -234,29 +234,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onOptionClick
                   loading="lazy"
                 />
               </div>
-            )}
-
-            {/* Render Video */}
-            {message.video && (
-               <div className="mb-2 overflow-hidden rounded-xl border border-brand-500/30 shadow-2xl relative bg-black group">
-                 <div className="absolute top-3 right-3 bg-black/70 backdrop-blur px-3 py-1.5 rounded-full text-xs font-medium text-brand-300 flex items-center gap-1.5 z-10 pointer-events-none border border-white/10">
-                   <Film size={14} /> Living Scene
-                 </div>
-                 <video 
-                   key={message.video}
-                   src={message.video} 
-                   controls 
-                   autoPlay 
-                   loop 
-                   muted
-                   playsInline
-                   className="w-full h-auto max-h-[500px] shadow-inner" 
-                   onError={(e) => {
-                     console.error("Video failed to load:", message.video);
-                     e.currentTarget.style.display = 'none';
-                   }}
-                 />
-               </div>
             )}
 
             <div className="whitespace-pre-wrap break-words font-medium tracking-wide drop-shadow-sm min-h-[1.5em]">
