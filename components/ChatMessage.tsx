@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Message } from '../types';
-import { User, Bot, AlertCircle, ChevronRight, Play, Pause, Dices, Hexagon, Trophy, Scroll, Star } from 'lucide-react';
+import { User, Bot, AlertCircle, ChevronRight, Play, Pause, Dices, Hexagon, Trophy, Scroll, Star, Heart, ArrowUp, ArrowDown, Flag, Package } from 'lucide-react';
 
 interface ChatMessageProps {
   message: Message;
@@ -85,7 +85,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onOptionClick
     let text = message.text;
     let quest = null;
 
-    // Parse Quest Tags
+    // Parse Quest Tags (Logic remains for backward compatibility, though App.tsx should handle stripping now)
     // [QUEST START: ...]
     const startMatch = text.match(/\[QUEST START:\s*(.*?)\]/i);
     if (startMatch) {
@@ -207,22 +207,60 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onOptionClick
               </div>
             )}
 
-            {/* Quest Notification */}
-            {questNotification && (
-               <div className={`flex items-center gap-3 p-3 rounded-lg border mb-2 animate-in slide-in-from-top-2 ${getQuestColor(questNotification.type)}`}>
-                  <div className="p-1.5 rounded-full bg-black/20">
-                    {getQuestIcon(questNotification.type)}
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-wider opacity-80">
-                      {questNotification.type === 'start' ? 'New Quest' : questNotification.type === 'complete' ? 'Quest Completed' : 'Quest Updated'}
+            {/* Notifications */}
+            <div className="flex flex-col gap-2">
+                {questNotification && (
+                <div className={`flex items-center gap-3 p-3 rounded-lg border mb-1 animate-in slide-in-from-top-2 ${getQuestColor(questNotification.type)}`}>
+                    <div className="p-1.5 rounded-full bg-black/20">
+                        {getQuestIcon(questNotification.type)}
                     </div>
-                    <div className="font-semibold text-sm">
-                      {questNotification.text}
+                    <div>
+                        <div className="text-xs font-bold uppercase tracking-wider opacity-80">
+                        {questNotification.type === 'start' ? 'New Quest' : questNotification.type === 'complete' ? 'Quest Completed' : 'Quest Updated'}
+                        </div>
+                        <div className="font-semibold text-sm">
+                        {questNotification.text}
+                        </div>
                     </div>
-                  </div>
-               </div>
-            )}
+                </div>
+                )}
+                
+                {message.stateUpdates?.relations?.map((rel, i) => (
+                    <div key={`rel-${i}`} className="flex items-center gap-3 p-2 rounded-lg border bg-pink-500/10 border-pink-500/30 text-pink-200 animate-in slide-in-from-top-2">
+                         <div className="p-1.5 rounded-full bg-pink-500/20">
+                             <Heart size={14} />
+                         </div>
+                         <div className="text-sm font-medium flex-1">
+                             {rel}
+                         </div>
+                         <div className="text-xs opacity-70">
+                             {rel.includes('-') ? <ArrowDown size={14} className="text-red-400"/> : <ArrowUp size={14} className="text-green-400"/>}
+                         </div>
+                    </div>
+                ))}
+                
+                {message.stateUpdates?.flags?.map((flag, i) => (
+                     <div key={`flag-${i}`} className="flex items-center gap-3 p-2 rounded-lg border bg-indigo-500/10 border-indigo-500/30 text-indigo-200 animate-in slide-in-from-top-2">
+                         <div className="p-1.5 rounded-full bg-indigo-500/20">
+                             <Flag size={14} />
+                         </div>
+                         <div className="text-sm font-medium">
+                             Story Update: <span className="text-white opacity-80">{flag.replace(/_/g, ' ')}</span>
+                         </div>
+                    </div>
+                ))}
+
+                 {message.stateUpdates?.inventory?.map((item, i) => (
+                     <div key={`item-${i}`} className="flex items-center gap-3 p-2 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-200 animate-in slide-in-from-top-2">
+                         <div className="p-1.5 rounded-full bg-emerald-500/20">
+                             <Package size={14} />
+                         </div>
+                         <div className="text-sm font-medium">
+                             Item Acquired: <span className="text-white opacity-80">{item}</span>
+                         </div>
+                    </div>
+                ))}
+            </div>
 
             {/* Render Image */}
             {message.image && (

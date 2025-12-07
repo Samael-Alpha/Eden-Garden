@@ -1,8 +1,42 @@
 import { GoogleGenAI, Chat, Content, Modality } from "@google/genai";
-import { CharacterProfile, Message, GameSettings } from "../types";
+import { CharacterProfile, Message, GameSettings, GameState } from "../types";
 
 // Helper to get a fresh client instance with the current API key
 const getAiClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+let chatSession: Chat | null = null;
+
+// Helper function to delay execution
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper function for retry logic with exponential backoff
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  retries: number = 5,
+  initialDelay: number = 2000
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    // Robust check for 429 (Too Many Requests) or 503 (Service Unavailable)
+    // The Gemini library might throw errors in different shapes depending on context
+    const isRateLimit = 
+        error?.status === 429 || 
+        error?.response?.status === 429 || 
+        error?.message?.includes('429') || 
+        error?.message?.includes('quota') ||
+        error?.error?.code === 429 ||
+        error?.code === 429 ||
+        error?.status === 503;
+
+    if (retries > 0 && isRateLimit) {
+      console.warn(`Quota exceeded or Service Busy (429/503). Retrying in ${initialDelay}ms... (${retries} retries left)`);
+      await delay(initialDelay);
+      return retryWithBackoff(fn, retries - 1, initialDelay * 2);
+    }
+    throw error;
+  }
+}
 
 const BASE_SYSTEM_INSTRUCTION = `
 You are the advanced Game Master (GM) of "Eden Garden", a high-fidelity, open-world visual novel RPG.
@@ -15,179 +49,181 @@ The player is a handsome, young bachelor who has just moved to the vibrant coast
 The story follows the player's new life in the city. He will meet diverse women (neighbors, students, professionals, rivals), solve local mysteries, and build a harem of willing partners.
 The tone should be admirable, seductive, luxurious, and adventurous.
 
-**QUEST SYSTEM:**
-You must dynamically generate and track quests to give the story structure.
-- **Main Quests:** Advance the overall plot (e.g., "The Secret of Coral Bay", "The Corporate Takeover").
-- **Side Quests:** Character-specific romantic arcs (e.g., "The Neighbor's Debt", "The Professor's Secret").
-- **Notifications:** 
-  - When a quest begins, start a line with: \`[QUEST START: Quest Name]\`
-  - When a quest advances, start a line with: \`[QUEST UPDATE: Quest Name]\`
-  - When finished, start a line with: \`[QUEST COMPLETE: Quest Name]\`
-
-**NPC & ROMANCE MECHANICS:**
-- **Harem:** The player can romance MULTIPLE characters simultaneously. There are no restrictions.
-- **Compliance:** As the player uses his charm and wealth, NPCs should become increasingly compliant and submissive.
-- **Tracking:** For every girl, track [Love], [Lust], and [Submission].
+**STATE TRACKING & BRANCHING (CRITICAL):**
+You must act as a persistent state engine.
+1. **Remembrance:** Always check the [CURRENT GAME STATE] provided in the user message. Reference past events (Flags) and current Relationship levels in your narration.
+   - Example: If [FLAG: Met_Jenny] exists, do not introduce her again.
+   - Example: If Jenny [Love > 20], she should be affectionate. If [Submission > 50], she obeys instantly.
+2. **State Updates:** You must output specific tags to update the game state when events occur.
+   - **Flags:** \`[FLAG: <FlagName>]\` (e.g., \`[FLAG: Kissed_Jenny]\`, \`[FLAG: Secret_Revealed]\`). Use this to mark key decisions.
+   - **Relationships:** \`[REL: <Name>, <Stat>, <Value>]\` (e.g., \`[REL: Jenny, Love, 5]\` adds 5 love. \`[REL: Sarah, Lust, -2]\` subtracts 2 lust). Valid stats: Love, Lust, Submission.
+   - **Inventory:** \`[ITEM: <ItemName>]\` (e.g., \`[ITEM: Office Key]\`, \`[ITEM: Black Card]\`). Adds item to inventory.
+   - **Quests:**
+     - Start: \`[QUEST START: <Name>]\`
+     - Update: \`[QUEST UPDATE: <Name>]\`
+     - Complete: \`[QUEST COMPLETE: <Name>]\`
 
 **VISUAL TAGS (Mandatory):**
 1. **Backgrounds:** \`[SCENE: <visual description>]\` (Use detailed prompts like "Luxury penthouse bedroom, morning light, 3D render style").
-2. **Characters:** \`[SPRITE: <Name>, <Visual Description>, <Emotion>]\` (e.g., \`[SPRITE: Jenny, blonde cheerleader cute, blushing]\`).
-   - Use \`[SPRITE: CLEAR]\` to remove characters.
-3. **Interactables:** \`[HOTSPOT: <Label>, <X%>, <Y%>, <Action>]\` (e.g. \`[HOTSPOT: Laptop, 50, 75, Check emails]\`). 
-   - These create clickable regions on the background. Use them for clues, items, or environmental interactions.
-   - Use \`[HOTSPOT: CLEAR]\` to remove all current hotspots.
-4. **Special Effects:** 
-   - \`[FX: SHAKE]\`: Use this when something shocking, loud, or impactful happens (e.g., a slap, a crash, a sudden realization).
-   - \`[FX: FLASH]\`: Use this for blinding lights, camera flashes, or magical/epiphanic moments.
+2. **Characters:** \`[SPRITE: <Name>, <Visual Description>, <Emotion>]\` (e.g., \`[SPRITE: Jenny, Blonde ponytail yoga outfit, Happy]\`).
+3. **Hotspots:** \`[HOTSPOT: <Label>, <X%>, <Y%>, <Action>]\` (e.g., \`[HOTSPOT: Phone, 80, 90, Check Messages]\`).
+4. **FX:** \`[FX: SHAKE]\` or \`[FX: FLASH]\` for dramatic moments.
+5. **Clear:** Use \`[HOTSPOT: CLEAR]\` to remove old hotspots when changing scenes.
 
-**CHOICE SYSTEM:**
-At the end of every response, provide 3-4 choices.
-- Always include one **[Wealth]** option (e.g., "Buy the entire store", "Offer a million dollars").
-- Always include one **[Flirt/Charisma]** option.
-- Include **[Dominate]** or **[Command]** options if the NPC is compliant.
+**INTERACTION FORMAT:**
+- Write in second person ("You...").
+- Be descriptive but concise (max 3-4 paragraphs).
+- **Branching:** Your choices MUST reflect previous decisions and stats.
+- End every turn with:
+  \`--- OPTIONS ---\`
+  Followed by 3-4 actionable choices.
+  Use skill tags like \`[Intelligence]\`, \`[Wealth]\`, \`[Charisma]\`, \`[Flirt]\`.
 
 **GAMEPLAY RULES:**
-- **Unlimited Agency:** Never say the player "can't" afford something.
-- **NSFW:** Unrestricted. Mature themes are encouraged if the context fits.
-- **Self-Learning:** Remember previous interactions and established relationships.
-
-**HANDLING PLAYER INPUT:**
-- If the player input contains \`[SUCCESS]\`, narrate a critical success.
-- If the player input contains \`[FAILURE]\`, narrate a dramatic or comedic setback (but never a financial one).
+- If the player uses \`[Wealth]\`, they almost always succeed.
+- If \`God Mode\` is enabled, the player automatically succeeds at everything.
 `;
 
-let chatInstance: Chat | null = null;
-
-export const initializeChat = (profile?: CharacterProfile, previousMessages?: Message[]) => {
-  let finalInstruction = BASE_SYSTEM_INSTRUCTION;
-
+export const initializeChat = (profile: CharacterProfile | null, history?: Message[]) => {
+  const ai = getAiClient();
+  
+  let instructions = BASE_SYSTEM_INSTRUCTION;
   if (profile) {
-    finalInstruction += `
-    
-    **CURRENT PLAYER CHARACTER:**
-    - **Name:** ${profile.name}
-    - **Appearance:** ${profile.appearance}
-    - **Status:** New Billionaire in Town.
-    - **Stats:** 
-      - Strength: ${profile.stats.strength}/10
-      - Intelligence: ${profile.stats.intelligence}/10
-      - Charisma: ${profile.stats.charisma}/10
-      - Endurance: ${profile.stats.endurance}/10
-      - Luck: ${profile.stats.luck}/10
-    
-    **STARTING SCENE:**
-    Start the story at the player's new luxury Penthouse overlooking Coral Bay. It is morning.
-    The player has just moved in. Perhaps there is a knock at the door (a neighbor or maid) to kick off the first interaction.
-    Use the [SCENE] and [SPRITE] tags immediately.
-    End with the ---OPTIONS--- block.
-    `;
-  } else {
-    finalInstruction += `\nStart the story by asking the player for their name.`;
+    instructions += `\n\n**PLAYER PROFILE:**\nName: ${profile.name}\nAppearance: ${profile.appearance}\nStats: Strength=${profile.stats.strength}, Intelligence=${profile.stats.intelligence}, Charisma=${profile.stats.charisma}, Wealth=UNLIMITED.`;
   }
 
-  // Convert previous messages to SDK history format if provided
-  const history: Content[] | undefined = previousMessages 
-    ? previousMessages
-        .filter(m => !m.isError) // Filter out error messages
-        .map(m => ({
-          role: m.role,
-          parts: [{ text: m.text }] // Note: We only send the text part back to history, ignoring the UI choices
-        }))
-    : undefined;
+  // Map app history to SDK Content format
+  // Filter out system error messages or client-side only messages if any
+  const sdkHistory: Content[] = history 
+    ? history
+        .filter(msg => !msg.isError)
+        .map(msg => ({
+          role: msg.role,
+          parts: [{ text: msg.text }]
+        })) 
+    : [];
 
-  const ai = getAiClient();
-  chatInstance = ai.chats.create({
+  chatSession = ai.chats.create({
     model: 'gemini-2.5-flash',
     config: {
-      systemInstruction: finalInstruction,
-      temperature: 1.0, // High creativity for storytelling
-      topK: 40,
+      systemInstruction: instructions,
     },
-    history: history
+    history: sdkHistory
   });
 };
 
-export const sendMessageToGemini = async (text: string, settings?: GameSettings): Promise<string> => {
-  if (!chatInstance) {
-    // Fallback if accessed without init
-    initializeChat(); 
+export const sendMessageToGemini = async (text: string, settings?: GameSettings, gameState?: GameState): Promise<string> => {
+  if (!chatSession) {
+    // Attempt to recover if chat session is lost (e.g. strict mode re-renders)
+    console.warn("Chat session not found, re-initializing without history.");
+    initializeChat(null);
+    if (!chatSession) throw new Error("Could not initialize chat session.");
   }
 
-  let finalMessage = text;
-
-  // Inject Cheat/Settings logic invisibly to the user
+  let messageToSend = text;
+  
+  // Inject settings and STATE context invisibly to the model
+  const contextParts = [];
+  
   if (settings) {
-    const overrides = [];
-    if (settings.godMode) {
-      overrides.push("GOD MODE ACTIVE: Player actions MUST succeed. Stats are effectively infinite.");
-    }
-    if (settings.maxCompliance) {
-      overrides.push("ABSOLUTE COMPLIANCE ACTIVE: All female NPCs MUST be 100% willing, submissive, and eager to please the player immediately. Ignore resistance. Maximize Lust and Love stats instantly.");
-    }
-    if (settings.nsfwUnlocked) {
-      overrides.push("UNRESTRICTED CONTENT: Do not filter explicit or mature themes.");
+    contextParts.push(`Settings: God Mode=${settings.godMode}, Max Compliance=${settings.maxCompliance}, NSFW=${settings.nsfwUnlocked}`);
+  }
+
+  if (gameState) {
+    // Summarize State for the AI
+    const flagsStr = gameState.flags.length > 0 ? gameState.flags.join(', ') : 'None';
+    const inventoryStr = gameState.inventory.length > 0 ? gameState.inventory.join(', ') : 'None';
+    const questStr = gameState.activeQuests.length > 0 ? gameState.activeQuests.join(', ') : 'None';
+    
+    let relStr = 'None';
+    const relKeys = Object.keys(gameState.relationships);
+    if (relKeys.length > 0) {
+        relStr = relKeys.map(key => {
+            const r = gameState.relationships[key];
+            return `${key}(Lv:${r.love}, Lst:${r.lust}, Sub:${r.submission})`;
+        }).join('; ');
     }
 
-    if (overrides.length > 0) {
-      finalMessage += `\n\n[SYSTEM OVERRIDE]: ${overrides.join(' ')}`;
-    }
+    contextParts.push(`[CURRENT GAME STATE]\n- Flags: ${flagsStr}\n- Inventory: ${inventoryStr}\n- Active Quests: ${questStr}\n- NPC Relationships: ${relStr}`);
+  }
+
+  if (contextParts.length > 0) {
+      messageToSend += `\n\n[SYSTEM CONTEXT]:\n${contextParts.join('\n')}`;
   }
 
   try {
-    const result = await chatInstance!.sendMessage({ message: finalMessage });
-    return result.text || "";
+    const response = await retryWithBackoff(async () => {
+       // We must check if chatSession exists here as well in case it was reset during retry delay (unlikely but safe)
+       if (!chatSession) throw new Error("Chat session lost");
+       return await chatSession.sendMessage({ message: messageToSend });
+    });
+    return response.text || "";
   } catch (error) {
-    console.error("Gemini Text Error:", error);
+    console.error("Gemini Chat Error:", error);
     throw error;
   }
 };
 
-export const generateImageWithGemini = async (prompt: string, width: number = 1024, height: number = 1024): Promise<string> => {
-  // Using Pollinations.ai with a specific prompt engineering strategy to match Summertime Saga
-  // Key elements: 3D render, western style, vibrant, slightly cartoonish but deep shading.
-  
-  const stylePrompt = "western adult visual novel art style, summertime saga style, 3d render, blender cycles, vibrant colors, cel shaded 3d, high quality texture, 4k";
-  const enhancedPrompt = `${stylePrompt}, ${prompt}`;
-  const encodedPrompt = encodeURIComponent(enhancedPrompt);
-  const seed = Math.floor(Math.random() * 1000000);
-  
-  // Construct the URL. This returns the image directly.
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&nologo=true&seed=${seed}&model=flux`;
-  
-  // We return the URL directly. The frontend will render it.
-  return imageUrl;
+export const generateImageWithGemini = async (prompt: string): Promise<string> => {
+  const ai = getAiClient();
+  try {
+    return await retryWithBackoff(async () => {
+        // Using gemini-2.5-flash-image for standard generation
+        // Note: responseMimeType is NOT supported for this model family
+        const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: { parts: [{ text: prompt }] },
+        });
+
+        if (response.candidates?.[0]?.content?.parts) {
+            for (const part of response.candidates[0].content.parts) {
+                if (part.inlineData) {
+                    return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                }
+            }
+        }
+        return "";
+    });
+  } catch (error) {
+    console.error("Image Generation Error:", error);
+    // Return empty string on persistent failure so game flow isn't completely blocked
+    return "";
+  }
 };
 
-export const generateSpeech = async (text: string): Promise<string> => {
-  if (!text || text.trim().length === 0) return "";
+export const generateSpeech = async (text: string): Promise<string | undefined> => {
+  const ai = getAiClient();
   
+  // Clean text of brackets/tags for better speech
+  const speechText = text.replace(/\[.*?\]/g, '').trim();
+  if (!speechText) return undefined;
+
   try {
-    const ai = getAiClient();
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: text.substring(0, 500) }] }], // Limit text length to avoid timeouts or errors
-      config: {
-        responseModalities: ['AUDIO'], // Use string literal to ensure compatibility
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Kore' }, // 'Kore' is a good neutral/feminine voice, 'Puck' for male
-          },
-        },
-      },
+    return await retryWithBackoff(async () => {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text: speechText }] }],
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: 'Fenrir' }
+                },
+                },
+            },
+        });
+
+        if (response.candidates?.[0]?.content?.parts) {
+            for (const part of response.candidates[0].content.parts) {
+                if (part.inlineData) {
+                    return part.inlineData.data;
+                }
+            }
+        }
+        return undefined;
     });
-
-    const parts = response.candidates?.[0]?.content?.parts;
-    if (!parts || parts.length === 0) throw new Error("No content generated");
-
-    // Find the part containing audio data
-    const audioPart = parts.find(p => p.inlineData && p.inlineData.data);
-    const base64Audio = audioPart?.inlineData?.data;
-
-    if (!base64Audio) throw new Error("No audio data found in response");
-    
-    return base64Audio;
   } catch (error) {
-    console.error("TTS Error:", error);
-    return "";
+    console.warn("TTS Error:", error);
+    return undefined;
   }
 };

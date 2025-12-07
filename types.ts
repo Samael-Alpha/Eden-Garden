@@ -1,3 +1,4 @@
+
 export interface Message {
   id: string;
   role: 'user' | 'model';
@@ -7,6 +8,11 @@ export interface Message {
   audio?: string; // Base64 string for audio (TTS)
   isError?: boolean;
   choices?: string[]; // Parsed interactive choices
+  stateUpdates?: {
+    flags?: string[];
+    relations?: string[];
+    inventory?: string[];
+  };
 }
 
 export interface ChatSession {
@@ -51,4 +57,17 @@ export interface GameSettings {
   godMode: boolean;        // Max stats, force success
   maxCompliance: boolean;  // NPCs obey everything
   nsfwUnlocked: boolean;   // Explicit intent flag
+}
+
+export interface NpcRelation {
+  love: number;
+  lust: number;
+  submission: number;
+}
+
+export interface GameState {
+  flags: string[];
+  relationships: Record<string, NpcRelation>;
+  inventory: string[];
+  activeQuests: string[];
 }

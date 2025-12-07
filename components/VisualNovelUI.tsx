@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Message } from '../types';
-import { ChevronRight, Dices, Send, Play, Pause, Trophy, Star, Scroll, Flame, Sparkles, MessageCircle, Minus, Eye, Smartphone, Briefcase, Heart, Search } from 'lucide-react';
+import { ChevronRight, Dices, Send, Play, Pause, Trophy, Star, Scroll, Flame, Sparkles, MessageCircle, Minus, Eye, Smartphone, Briefcase, Heart, Search, Crown } from 'lucide-react';
 
 interface VisualNovelUIProps {
   message: Message;
@@ -189,54 +189,94 @@ export const VisualNovelUI: React.FC<VisualNovelUIProps> = ({
       {showChoices && message.choices && message.choices.length > 0 && !isTyping && (
         <div className="absolute right-6 bottom-[28vh] md:bottom-[32vh] flex flex-col gap-3 items-end pointer-events-auto animate-in slide-in-from-right-12 fade-in duration-500 z-50">
           {message.choices.map((choice, idx) => {
-            const isStatCheck = choice.match(/^\[(Strength|Intelligence|Charisma|Endurance|Luck|Wealth)\]/i);
+            const lowerChoice = choice.toLowerCase();
             let gradientClass = 'from-blue-600 to-blue-500 border-blue-400';
             let icon = null;
             let glowClass = '';
+            let isIconStyle = false;
 
-            if (choice.includes('[Wealth]')) { 
+            if (lowerChoice.includes('[wealth]')) { 
                 gradientClass = 'from-amber-500 to-amber-600 border-amber-300'; 
                 glowClass = 'glow-wealth';
-                icon = <Trophy size={16} className="text-white drop-shadow-md" />;
+                icon = <Trophy size={20} className="text-white drop-shadow-md" />;
+                isIconStyle = true;
             }
-            else if (choice.includes('[Strength]')) { 
+            else if (lowerChoice.includes('[strength]')) { 
                 gradientClass = 'from-red-600 to-red-500 border-red-400';
-                icon = <Flame size={16} className="text-white drop-shadow-md" />;
+                icon = <Flame size={20} className="text-white drop-shadow-md" />;
+                isIconStyle = true;
             }
-            else if (choice.includes('[Charisma]')) { 
+            else if (lowerChoice.includes('[charisma]') || lowerChoice.includes('[flirt]')) { 
                 gradientClass = 'from-pink-600 to-pink-500 border-pink-400';
-                icon = <Sparkles size={16} className="text-white drop-shadow-md" />;
+                icon = lowerChoice.includes('flirt') ? <Heart size={20} className="text-white drop-shadow-md" /> : <Sparkles size={20} className="text-white drop-shadow-md" />;
+                isIconStyle = true;
+            }
+            else if (lowerChoice.includes('[dominate]') || lowerChoice.includes('[command]')) {
+                gradientClass = 'from-purple-800 to-purple-600 border-purple-400';
+                icon = <Crown size={20} className="text-white drop-shadow-md" />;
+                isIconStyle = true;
             }
 
+            // Standard Option
+            if (!isIconStyle) {
+                const isStatCheck = choice.match(/^\[(Intelligence|Endurance|Luck)\]/i);
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => onOptionClick(choice)}
+                    className={`
+                      relative overflow-hidden text-right
+                      bg-gradient-to-r ${gradientClass}
+                      border-2
+                      rounded-xl
+                      px-6 py-3
+                      min-w-[200px] max-w-[350px]
+                      shadow-[0_5px_15px_rgba(0,0,0,0.5)] 
+                      transform transition-all duration-200
+                      hover:scale-105 hover:translate-x-[-5px] active:scale-95
+                    `}
+                    style={{ animationDelay: `${idx * 75}ms` }}
+                  >
+                    <div className="absolute inset-0 glossy-button pointer-events-none" />
+                    <div className="relative flex items-center justify-end gap-3 z-10">
+                       <span className="font-bold text-white text-sm md:text-base drop-shadow-md leading-tight">{choice}</span>
+                       {isStatCheck ? <Dices size={16} className="text-white/80" /> : <ChevronRight size={18} className="text-white/80" />}
+                    </div>
+                  </button>
+                );
+            }
+
+            // Icon Style Option
+            const displayLabel = choice.replace(/^\[.*?\]\s*/, ''); // Remove tag for the label
             return (
-              <button
+                <button
                 key={idx}
                 onClick={() => onOptionClick(choice)}
                 className={`
-                  relative overflow-hidden text-right
-                  bg-gradient-to-r ${gradientClass}
-                  border-2
-                  rounded-xl
-                  px-6 py-3
-                  min-w-[200px] max-w-[350px]
-                  shadow-[0_5px_15px_rgba(0,0,0,0.5)] 
-                  transform transition-all duration-200
-                  hover:scale-105 hover:translate-x-[-5px] active:scale-95
-                  ${glowClass}
+                    group relative flex items-center justify-end
+                    bg-gradient-to-r ${gradientClass}
+                    border-2 rounded-full
+                    h-14 w-14 hover:w-auto hover:px-5 hover:rounded-2xl
+                    transition-all duration-300 ease-out
+                    shadow-[0_5px_15px_rgba(0,0,0,0.5)]
+                    hover:scale-110 active:scale-95
+                    overflow-hidden
+                    ${glowClass}
                 `}
                 style={{ animationDelay: `${idx * 75}ms` }}
-              >
-                {/* Glossy overlay */}
+                >
                 <div className="absolute inset-0 glossy-button pointer-events-none" />
                 
-                <div className="relative flex items-center justify-end gap-3 z-10">
-                   <span className="font-bold text-white text-sm md:text-base drop-shadow-md leading-tight">{choice}</span>
-                   {icon ? <div className="bg-black/20 p-1 rounded-md">{icon}</div> : 
-                    isStatCheck ? <Dices size={16} className="text-white/80" /> : 
-                    <ChevronRight size={18} className="text-white/80" />
-                   }
+                {/* Text reveals on hover */}
+                <span className="whitespace-nowrap opacity-0 w-0 group-hover:w-auto group-hover:opacity-100 group-hover:mr-3 transition-all duration-300 font-bold text-white text-sm shadow-black drop-shadow-md overflow-hidden delay-75">
+                    {displayLabel}
+                </span>
+
+                {/* Icon always visible */}
+                <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 z-10">
+                    {icon}
                 </div>
-              </button>
+                </button>
             );
           })}
         </div>
